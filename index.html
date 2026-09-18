@@ -175,12 +175,26 @@ async function uploadCurrent(){
     // Tidak menunggu redirect ContentService sehingga UI tidak macet di "Mengirim jawaban".
     await submitUploadForm(payload);
 
-    // Tunggu backend menyimpan file, lalu verifikasi melalui JSONP.
+    // Tunggu backend dan tampilkan error server yang sebenarnya bila ada.
     let verified=null;
-    for(let attempt=1;attempt<=12;attempt++){
-      setStatus('⏳ <b>Memverifikasi video di Google Drive…</b> '+attempt+'/12');
+    let serverMessage='';
+    for(let attempt=1;attempt<=15;attempt++){
+      setStatus('⏳ <b>Memverifikasi video di Google Drive…</b> '+attempt+'/15');
       await new Promise(r=>setTimeout(r,1500));
+
       try{
+        const st=await jsonp({
+          api:'interview',
+          action:'uploadStatus',
+          sessionId:session.sessionId,
+          questionId:currentQuestion.questionId
+        });
+
+        if(st && st.status==='ERROR'){
+          throw new Error('SERVER: '+(st.message||'Upload gagal.'));
+        }
+        if(st && st.message) serverMessage=st.message;
+
         const check=await jsonp({
           api:'interview',
           action:'verifyUpload',
@@ -188,11 +202,13 @@ async function uploadCurrent(){
           questionId:currentQuestion.questionId
         });
         if(check && check.uploaded){verified=check;break}
-      }catch(e){}
+      }catch(e){
+        if(String(e.message||e).indexOf('SERVER:')===0) throw e;
+      }
     }
 
     if(!verified){
-      throw new Error('Video belum terkonfirmasi tersimpan di Google Drive. Jawaban TIDAK akan ditandai selesai. Silakan klik Mulai Rekam untuk mencoba kembali.');
+      throw new Error(serverMessage || 'Request upload belum diterima server. Pastikan deployment Web App dapat diakses oleh Anyone.');
     }
 
     setStatus('✅ <b>Video berhasil tersimpan di Google Drive.</b> Menyiapkan pertanyaan berikutnya…');
