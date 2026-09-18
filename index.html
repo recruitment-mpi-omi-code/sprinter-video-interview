@@ -6,83 +6,153 @@
 <title>SPRINTER HRD Video Interview</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f2f6fb;color:#0f172a}
-.wrap{max-width:1050px;margin:0 auto;padding:24px}.card{background:#fff;border-radius:24px;padding:30px;box-shadow:0 12px 40px rgba(15,23,42,.08)}
-.brand{font-weight:800;color:#2563eb;letter-spacing:.4px}.title{font-size:30px;margin:8px 0}.sub{color:#64748b;margin-bottom:24px}
-.badge{display:inline-block;padding:8px 12px;border-radius:999px;background:#eff6ff;color:#2563eb;font-weight:700;margin-bottom:16px}
+.wrap{max-width:1050px;margin:auto;padding:22px}.card{background:#fff;border-radius:24px;padding:28px;box-shadow:0 12px 40px rgba(15,23,42,.08)}
+.brand{font-weight:900;color:#2563eb;letter-spacing:.5px}.title{font-size:30px;margin:8px 0}.sub{color:#64748b;margin-bottom:20px}
+.meta{background:#f8fafc;border-radius:14px;padding:14px;margin-bottom:16px}.badge{display:inline-block;padding:8px 12px;border-radius:999px;background:#eff6ff;color:#2563eb;font-weight:800;margin:8px 0 14px}
 .videoBox{background:#111827;border-radius:20px;overflow:hidden;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center}
-video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}.msg{margin:16px 0;padding:14px;border-radius:12px;background:#f8fafc;color:#475569;font-weight:600}
-.actions{display:flex;gap:12px;flex-wrap:wrap}.btn{border:0;border-radius:12px;padding:14px 20px;font-weight:800;cursor:pointer;font-size:15px}
-.primary{background:#2563eb;color:#fff}.light{background:#eaf0f8;color:#0f172a}.danger{background:#fee2e2;color:#991b1b}
-.btn:disabled{opacity:.5;cursor:not-allowed}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#ef4444;margin-right:7px}
-#debug{font-family:monospace;font-size:12px;white-space:pre-wrap;margin-top:12px;color:#64748b}
-@media(max-width:650px){.wrap{padding:10px}.card{padding:18px;border-radius:18px}.title{font-size:24px}.actions .btn{width:100%}}
+video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}.msg{margin:15px 0;padding:14px;border-radius:12px;background:#f8fafc;color:#475569;font-weight:650}
+.actions{display:flex;gap:10px;flex-wrap:wrap}.btn{border:0;border-radius:12px;padding:14px 18px;font-weight:800;cursor:pointer;font-size:15px}
+.primary{background:#2563eb;color:white}.light{background:#eaf0f8;color:#0f172a}.danger{background:#fee2e2;color:#991b1b}.success{background:#dcfce7;color:#166534}
+.btn:disabled{opacity:.45;cursor:not-allowed}.hidden{display:none}.loader{padding:40px;text-align:center;font-weight:700;color:#64748b}
+@media(max-width:650px){.wrap{padding:10px}.card{padding:18px}.title{font-size:24px}.actions .btn{width:100%}}
 </style>
 </head>
 <body>
 <div class="wrap"><div class="card">
-  <div class="brand">SPRINTER HRD</div>
-  <h1 class="title">Video Interview</h1>
-  <div class="sub">Tes V9 — Kamera & Mikrofon HTTPS</div>
-  <div class="badge">PERTANYAAN 1 DARI 1</div>
+<div class="brand">SPRINTER HRD</div>
+<h1 class="title">Video Interview</h1>
+<div class="sub" id="subtitle">Memuat sesi interview…</div>
+<div id="loading" class="loader">Memuat data interview…</div>
+
+<div id="app" class="hidden">
+  <div class="meta"><b id="candidate"></b><br><span id="position"></span> • <span id="company"></span></div>
+  <div class="badge" id="counter">PERTANYAAN 1 DARI 1</div>
   <div class="videoBox"><video id="preview" autoplay playsinline muted></video></div>
-  <div class="msg" id="status">Klik <b>Aktifkan Kamera & Mikrofon</b>. Browser akan meminta izin Camera dan Microphone.</div>
+  <div class="msg" id="status">Aktifkan kamera dan mikrofon untuk memulai.</div>
   <div class="actions">
+    <button class="btn light" id="voiceBtn" disabled>🔊 Putar Ulang Pertanyaan</button>
     <button class="btn light" id="enableBtn">📹 Aktifkan Kamera & Mikrofon</button>
-    <button class="btn primary" id="recordBtn" disabled><span class="dot"></span>Mulai Rekam</button>
+    <button class="btn primary" id="recordBtn" disabled>● Mulai Rekam</button>
     <button class="btn danger" id="stopBtn" disabled>■ Stop Rekam</button>
   </div>
-  <div id="debug"></div>
-</div></div>
-<script>
-let stream=null, recorder=null, chunks=[];
-const v=document.getElementById('preview'), st=document.getElementById('status');
-const eb=document.getElementById('enableBtn'), rb=document.getElementById('recordBtn'), sb=document.getElementById('stopBtn');
-function status(t){st.innerHTML=t}
-function debug(t){document.getElementById('debug').textContent=t||''}
+</div>
 
+<div id="done" class="hidden">
+  <div class="msg success"><b>✓ Interview selesai.</b><br>Terima kasih. Seluruh jawaban Anda telah dikirim ke Tim Rekrutmen SPRINTER HRD.</div>
+</div>
+</div></div>
+
+<script>
+/*
+  WAJIB: ganti teks di bawah dengan URL deployment Google Apps Script Anda
+  yang berakhiran /exec.
+*/
+const APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbwUNqvifPMbpiKRu9H9nWWna94x0mjPcWcPk4m5niHXLMXBJrNO-5Rc4vfakyr58dZ5lA/exec';
+
+let session=null,questions=[],index=0,stream=null,recorder=null,chunks=[],startedAt=0;
+const $=id=>document.getElementById(id);
+
+function token(){return new URLSearchParams(location.search).get('token')||''}
+function setStatus(x){$('status').innerHTML=x}
+function jsonp(params){
+  return new Promise((resolve,reject)=>{
+    const cb='sprinter_cb_'+Date.now()+'_'+Math.floor(Math.random()*99999);
+    const sc=document.createElement('script');
+    const timer=setTimeout(()=>{cleanup();reject(new Error('Server tidak merespons.'));},20000);
+    function cleanup(){clearTimeout(timer);delete window[cb];if(sc.parentNode)sc.remove()}
+    window[cb]=r=>{cleanup();r&&r.ok?resolve(r.data):reject(new Error(r&&r.error?r.error:'Terjadi kesalahan.'))};
+    const q=new URLSearchParams({...params,callback:cb});
+    sc.src=APPS_SCRIPT_URL+'?'+q.toString();
+    sc.onerror=()=>{cleanup();reject(new Error('Tidak dapat terhubung ke server interview.'))};
+    document.body.appendChild(sc);
+  });
+}
+async function loadSession(){
+  try{
+    if(APPS_SCRIPT_URL.includes('PASTE_URL')) throw new Error('APPS_SCRIPT_URL belum diisi pada index.html.');
+    if(!token()) throw new Error('Token interview tidak ditemukan pada link.');
+    const d=await jsonp({api:'interview',action:'get',token:token()});
+    if(d.completed){$('loading').classList.add('hidden');$('done').classList.remove('hidden');return}
+    session=d;questions=d.questions||[];
+    $('candidate').textContent=d.candidateName||'-';$('position').textContent=d.positionName||'-';$('company').textContent=d.companyName||'-';
+    $('subtitle').textContent='Video Q&A Interaktif dengan Asesor SPRINTER HRD';
+    $('loading').classList.add('hidden');$('app').classList.remove('hidden');renderQuestion();
+  }catch(e){$('loading').innerHTML='❌ '+e.message}
+}
+function renderQuestion(){
+  $('counter').textContent='PERTANYAAN '+(index+1)+' DARI '+questions.length;
+  $('voiceBtn').disabled=false;
+  setStatus(index===0?'Aktifkan kamera dan mikrofon. Pertanyaan akan dibacakan oleh Asesor SPRINTER HRD.':'Jawaban sebelumnya berhasil dikirim. Dengarkan pertanyaan berikutnya.');
+  speakQuestion();
+}
+function speakQuestion(){
+  if(!questions[index])return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(questions[index].questionText);
+  const voices=speechSynthesis.getVoices();
+  u.voice=voices.find(v=>/id[-_]?ID/i.test(v.lang))||voices.find(v=>/^id/i.test(v.lang))||null;
+  u.lang='id-ID';u.rate=.92;u.pitch=1;u.volume=1;
+  speechSynthesis.speak(u);
+}
 async function enableMedia(){
   try{
-    if(!window.isSecureContext) throw new Error('Halaman bukan Secure Context (HTTPS).');
-    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('Browser tidak mendukung getUserMedia.');
-    status('Meminta izin kamera dan mikrofon…');
     stream=await navigator.mediaDevices.getUserMedia({
       video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}},
       audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
     });
-    v.srcObject=stream;
-    await v.play();
-    rb.disabled=false;
-    eb.textContent='✓ Kamera & Mikrofon Aktif';
-    status('✅ <b>Kamera dan mikrofon berhasil aktif.</b> Wajah Anda seharusnya sudah terlihat.');
-    const tracks=stream.getTracks().map(x=>x.kind+': '+x.label+' ['+x.readyState+']').join('\n');
-    debug(tracks);
-  }catch(e){
-    status('❌ <b>Kamera/mikrofon belum dapat diakses.</b> Pastikan halaman dibuka langsung melalui HTTPS, lalu izinkan Camera dan Microphone.');
-    debug((e.name||'Error')+': '+(e.message||e));
-  }
+    $('preview').srcObject=stream;await $('preview').play();
+    $('enableBtn').textContent='✓ Kamera & Mikrofon Aktif';$('recordBtn').disabled=false;
+    setStatus('✅ <b>Kamera dan mikrofon aktif.</b> Dengarkan pertanyaan, lalu klik Mulai Rekam.');
+    await jsonp({api:'interview',action:'start',sessionId:session.sessionId});
+  }catch(e){setStatus('❌ <b>Kamera/mikrofon tidak dapat diakses.</b> '+e.message)}
 }
-
-function bestMime(){
-  const opts=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
-  return opts.find(x=>window.MediaRecorder && MediaRecorder.isTypeSupported(x))||'';
+function mime(){
+  const a=['video/webm;codecs=vp8,opus','video/webm'];
+  return a.find(x=>window.MediaRecorder&&MediaRecorder.isTypeSupported(x))||'';
 }
 function startRecord(){
-  if(!stream) return;
-  chunks=[];
-  const mime=bestMime();
-  recorder=mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream);
+  if(!stream)return;
+  speechSynthesis.cancel();chunks=[];startedAt=Date.now();
+  const m=mime();recorder=m?new MediaRecorder(stream,{mimeType:m,videoBitsPerSecond:700000,audioBitsPerSecond:64000}):new MediaRecorder(stream);
   recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
-  recorder.onstop=()=>{
-    const blob=new Blob(chunks,{type:recorder.mimeType||'video/webm'});
-    status('✅ Tes rekaman berhasil. Ukuran video: <b>'+Math.round(blob.size/1024)+' KB</b>. Tahap berikutnya video akan dikirim ke Google Drive.');
-    rb.disabled=false; sb.disabled=true;
-  };
-  recorder.start(1000); rb.disabled=true; sb.disabled=false;
-  status('🔴 <b>Sedang merekam…</b> Silakan bicara untuk mengetes mikrofon.');
+  recorder.onstop=uploadCurrent;
+  recorder.start(1000);$('recordBtn').disabled=true;$('stopBtn').disabled=false;$('voiceBtn').disabled=true;
+  setStatus('🔴 <b>Sedang merekam jawaban…</b> Durasi menjawab bebas.');
 }
-function stopRecord(){if(recorder&&recorder.state!=='inactive')recorder.stop()}
-eb.onclick=enableMedia; rb.onclick=startRecord; sb.onclick=stopRecord;
-window.addEventListener('beforeunload',()=>{if(stream)stream.getTracks().forEach(t=>t.stop())});
+function stopRecord(){if(recorder&&recorder.state!=='inactive'){ $('stopBtn').disabled=true; recorder.stop(); }}
+function blobToDataURL(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob)})}
+async function uploadCurrent(){
+  try{
+    setStatus('⏳ <b>Mengirim jawaban…</b> Jangan tutup halaman.');
+    const blob=new Blob(chunks,{type:recorder.mimeType||'video/webm'});
+    if(blob.size>15*1024*1024) throw new Error('Rekaman lebih dari 15 MB. Silakan rekam ulang dengan jawaban lebih singkat.');
+    const dataUrl=await blobToDataURL(blob);
+    const payload={
+      api:'interviewUpload',sessionId:session.sessionId,
+      questionId:questions[index].questionId,
+      videoBase64:dataUrl,durationSeconds:Math.round((Date.now()-startedAt)/1000)
+    };
+    await fetch(APPS_SCRIPT_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});
+    index++;
+    if(index>=questions.length){await finishInterview();return}
+    $('recordBtn').disabled=false;$('voiceBtn').disabled=false;renderQuestion();
+  }catch(e){
+    setStatus('❌ <b>Jawaban gagal dikirim.</b> '+e.message);
+    $('recordBtn').disabled=false;$('voiceBtn').disabled=false;
+  }
+}
+async function finishInterview(){
+  try{
+    setStatus('⏳ Menyelesaikan interview…');
+    await new Promise(r=>setTimeout(r,1800));
+    await jsonp({api:'interview',action:'complete',sessionId:session.sessionId});
+    if(stream)stream.getTracks().forEach(t=>t.stop());
+    $('app').classList.add('hidden');$('done').classList.remove('hidden');
+  }catch(e){setStatus('Jawaban sudah dikirim, tetapi status akhir belum dapat diperbarui. '+e.message)}
+}
+$('enableBtn').onclick=enableMedia;$('recordBtn').onclick=startRecord;$('stopBtn').onclick=stopRecord;$('voiceBtn').onclick=speakQuestion;
+speechSynthesis.onvoiceschanged=()=>{};
+loadSession();
 </script>
 </body>
 </html>
