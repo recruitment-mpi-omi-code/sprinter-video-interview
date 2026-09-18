@@ -156,7 +156,7 @@ async function uploadCurrent(){
   try{
     setStatus('⏳ <b>Mengirim jawaban ke Google Drive…</b> Jangan tutup halaman.');
 
-    const blob=new Blob(chunks,{type:recorder.mimeType||'video/webm'});
+    const blob=new Blob(chunks,{type:'video/webm'});
     if(blob.size>15*1024*1024){
       throw new Error('Rekaman lebih dari 15 MB. Silakan rekam ulang dengan jawaban lebih singkat.');
     }
