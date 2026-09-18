@@ -123,24 +123,71 @@ function stopRecord(){if(recorder&&recorder.state!=='inactive'){ $('stopBtn').di
 function blobToDataURL(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob)})}
 async function uploadCurrent(){
   try{
-    setStatus('⏳ <b>Mengirim jawaban…</b> Jangan tutup halaman.');
+    setStatus('⏳ <b>Mengirim jawaban ke Google Drive…</b> Jangan tutup halaman.');
+
     const blob=new Blob(chunks,{type:recorder.mimeType||'video/webm'});
-    if(blob.size>15*1024*1024) throw new Error('Rekaman lebih dari 15 MB. Silakan rekam ulang dengan jawaban lebih singkat.');
+    if(blob.size>15*1024*1024){
+      throw new Error('Rekaman lebih dari 15 MB. Silakan rekam ulang dengan jawaban lebih singkat.');
+    }
+
+    const currentQuestion=questions[index];
     const dataUrl=await blobToDataURL(blob);
     const payload={
-      api:'interviewUpload',sessionId:session.sessionId,
-      questionId:questions[index].questionId,
-      videoBase64:dataUrl,durationSeconds:Math.round((Date.now()-startedAt)/1000)
+      api:'interviewUpload',
+      sessionId:session.sessionId,
+      questionId:currentQuestion.questionId,
+      videoBase64:dataUrl,
+      durationSeconds:Math.round((Date.now()-startedAt)/1000)
     };
-    await fetch(APPS_SCRIPT_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});
+
+    // no-cors memang tidak dapat membaca respons Apps Script.
+    // Karena itu V9.2 TIDAK menganggap fetch selesai = upload berhasil.
+    await fetch(APPS_SCRIPT_URL,{
+      method:'POST',
+      mode:'no-cors',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify(payload)
+    });
+
+    // Tunggu backend menyimpan file, lalu verifikasi melalui JSONP.
+    let verified=null;
+    for(let attempt=1;attempt<=12;attempt++){
+      setStatus('⏳ <b>Memverifikasi video di Google Drive…</b> '+attempt+'/12');
+      await new Promise(r=>setTimeout(r,1500));
+      try{
+        const check=await jsonp({
+          api:'interview',
+          action:'verifyUpload',
+          sessionId:session.sessionId,
+          questionId:currentQuestion.questionId
+        });
+        if(check && check.uploaded){verified=check;break}
+      }catch(e){}
+    }
+
+    if(!verified){
+      throw new Error('Video belum terkonfirmasi tersimpan di Google Drive. Jawaban TIDAK akan ditandai selesai. Silakan klik Mulai Rekam untuk mencoba kembali.');
+    }
+
+    setStatus('✅ <b>Video berhasil tersimpan di Google Drive.</b> Menyiapkan pertanyaan berikutnya…');
     index++;
-    if(index>=questions.length){await finishInterview();return}
-    $('recordBtn').disabled=false;$('voiceBtn').disabled=false;renderQuestion();
+
+    if(index>=questions.length){
+      await finishInterview();
+      return;
+    }
+
+    $('recordBtn').disabled=false;
+    $('voiceBtn').disabled=false;
+    renderQuestion();
+
   }catch(e){
-    setStatus('❌ <b>Jawaban gagal dikirim.</b> '+e.message);
-    $('recordBtn').disabled=false;$('voiceBtn').disabled=false;
+    setStatus('❌ <b>Upload belum berhasil.</b> '+e.message);
+    $('recordBtn').disabled=false;
+    $('voiceBtn').disabled=false;
   }
 }
+
 async function finishInterview(){
   try{
     setStatus('⏳ Menyelesaikan interview…');
